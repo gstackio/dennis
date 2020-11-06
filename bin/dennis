@@ -55,23 +55,26 @@ function install() {
 function runServer(config) {
   var server = dns.createServer();
   server.on('request', function (request, response) {
-    var serviceName = request.question[0].name.split(".");
-    var domain = serviceName.pop();
-    serviceName = serviceName.join(".");
     var start = Date.now();
-    var targetDomain = config.domains[domain];
-    if (!targetDomain || !targetDomain.host) {
-      console.log("ERR! Domain", domain, "not mapped");
-      return response.send();
+
+    var requestedName = request.question[0].name;
+    var targetDomain = config.default;
+
+    for (suffix in config.domains) {
+      if (requestedName.endsWith(suffix)) {
+        targetDomain = config.domains[suffix];
+        break;
+      }
     }
+
     var question = _.clone(request.question[0], true);
-    question.name = serviceName;
-    if (targetDomain.suffix) {
-      question.name += '.' + targetDomain.suffix;
-    }
     var req = dns.Request({
       question: question,
-      server: { address: targetDomain.host, port: targetDomain.port || 53, type: targetDomain.proto || 'udp' },
+      server: {
+        address: targetDomain.host,
+        port: targetDomain.port || 53,
+        type: targetDomain.proto || 'udp'
+      },
       timeout: targetDomain.timeout || 1000
     });
     req.on('timeout', function () {
@@ -80,7 +83,6 @@ function runServer(config) {
     req.on('message', function (err, answer) {
       console.log(request.question[0].name, 'resolved to', answer.answer.length, 'hosts via', targetDomain.host);
       answer.answer.forEach(function (a) {
-        a.name = a.name.replace(new RegExp(targetDomain.suffix + '$'), domain);
         response.answer.push(a);
       });
       response.send();
